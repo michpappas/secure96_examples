@@ -8,22 +8,19 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <config.h>
 #include <secure96/s96at.h>
 
-#define ARRAY_LEN(arr) (sizeof(arr)/sizeof(arr[0]))
-
-#define SLOT_CONFIG_OFFSET	20
-#define SLOT_CONFIG_NUM_WORDS	8
-#define SLOT_CONFIG_START_WORD	5
-
-#define CONFIG_NUM_WORDS	22 /* Total number of words in config zone */
-#define DATA_NUM_SLOTS		16 /* Total number of slots in data zone */
-#define OTP_NUM_WORDS		2  /* Total number of slots in otp zone */
+#include <atecc508a.h>
+#include <atsha204a.h>
+#include <common.h>
 
 static void usage(char *fname)
 {
-	fprintf(stderr, "Usage: %s <option>\n", fname);
+	fprintf(stderr, "Usage: %s <device> <option>\n", fname);
+	fprintf(stderr, "\n");
+	fprintf(stderr, "Available devices:\n");
+	fprintf(stderr, "  atsha		atsha204a\n");
+	fprintf(stderr, "  atecc		atecc508a\n");
 	fprintf(stderr, "\n");
 	fprintf(stderr, "Available options:\n");
 	fprintf(stderr, "  -i, --info		Display device info\n");
@@ -69,126 +66,10 @@ static char *otpmode2str(uint8_t mode)
 	}
 }
 
-static int read_config(struct s96at_desc *desc, uint8_t *buf)
-{
-	uint8_t ret;
-	size_t len = 4; /* 4-byte reads */
-
-	for (int i = 0; i < CONFIG_NUM_WORDS; i++) {
-		ret = s96at_read_config(desc, i, buf + i * len, len);
-		if (ret != S96AT_STATUS_OK) {
-			fprintf(stderr, "Failed to read config word %d\n", i);
-			break;
-		}
-	}
-	return ret;
-}
-
-static int personalize_config(struct s96at_desc *desc)
-{
-	uint8_t ret;
-	uint16_t crc;
-	uint8_t lock_config;
-	uint8_t config_buf[S96AT_ZONE_CONFIG_LEN] = { 0 };
-
-	ret = s96at_get_lock_config(desc, &lock_config);
-	if (ret != S96AT_STATUS_OK) {
-		fprintf(stderr, "Could not get config lock status\n");
-		goto out;
-	}
-
-	if (lock_config == S96AT_ZONE_LOCKED) {
-		fprintf(stderr, "Configuration already locked, skipping\n");
-		return S96AT_STATUS_OK;
-	}
-
-	/* Calculate the expected CRC: To lock the config zone, the CRC of
-	 * the entire config zone is required. We read the current configuration
-	 * and update the slot config part with the new values before passing it
-	 * to the CRC function.
-	 */
-	ret = read_config(desc, config_buf);
-	if (ret != S96AT_STATUS_OK) {
-		fprintf(stderr, "Could not read current config\n");
-		goto out;
-	}
-
-	memcpy(config_buf + SLOT_CONFIG_OFFSET, atsha204a_slot_config,
-	       ARRAY_LEN(atsha204a_slot_config));
-	crc = s96at_crc(config_buf, ARRAY_LEN(config_buf), 0);
-
-	for (int i = 0; i < SLOT_CONFIG_NUM_WORDS; i++) {
-		ret = s96at_write_config(desc, i + SLOT_CONFIG_START_WORD,
-					 atsha204a_slot_config + i * 4);
-		if (ret != S96AT_STATUS_OK) {
-			fprintf(stderr, "Failed writing config slot %d\n", i);
-			goto out;
-		}
-	}
-
-	ret = s96at_lock_zone(desc, S96AT_ZONE_CONFIG, crc);
-	if (ret != S96AT_STATUS_OK) {
-		fprintf(stderr, "Could not lock config\n");
-		goto out;
-	}
-out:
-	return ret;
-}
-
-static int personalize_data(struct s96at_desc *desc)
-{
-	uint8_t ret;
-	uint16_t crc;
-	uint8_t lock_data;
-
-	ret = s96at_get_lock_data(desc, &lock_data);
-	if (ret != S96AT_STATUS_OK) {
-		fprintf(stderr, "Could not get config lock status\n");
-		goto out;
-	}
-
-	if (lock_data == S96AT_ZONE_LOCKED) {
-		fprintf(stderr, "Data / OTP already locked\n");
-		goto out;
-	}
-
-	for (int i = 0; i < DATA_NUM_SLOTS; i++) {
-		ret = s96at_write_data(desc, i, 0, S96AT_FLAG_NONE,
-				       atsha204a_data + (i * 32), 32);
-		if (ret != S96AT_STATUS_OK) {
-			fprintf(stderr, "Failed writing data slot %d\n", i);
-			break;
-		}
-	}
-
-	for (int i = 0; i < 2; i++) {
-		ret = s96at_write_otp(desc, i * 8, atsha204a_otp + i * 32, 32);
-		if (ret != S96AT_STATUS_OK) {
-			fprintf(stderr, "Failed writing OTP word %d\n", i);
-			break;
-		}
-	}
-
-	/* Calculate the expected CRC: For the Data / OTP zones, the
-	 * expected CRC is calculated over the concatenation of the
-	 * contents of the two zones.
-	 */
-	crc = s96at_crc(atsha204a_data, ARRAY_LEN(atsha204a_data), 0);
-	crc = s96at_crc(atsha204a_otp, ARRAY_LEN(atsha204a_otp), crc);
-
-	ret = s96at_lock_zone(desc, S96AT_ZONE_DATA, crc);
-	if (ret != S96AT_STATUS_OK) {
-		fprintf(stderr, "Could not lock Data / OTP\n");
-		goto out;
-	}
-
-out:
-	return ret;
-}
-
 int main(int argc, char *argv[])
 {
 	uint8_t ret;
+	uint8_t dev;
 	struct s96at_desc desc;
 
 	uint8_t otp_mode;
@@ -196,7 +77,7 @@ int main(int argc, char *argv[])
 	uint8_t lock_data;
 	uint8_t devrev[S96AT_DEVREV_LEN] = { 0 };
 	uint8_t sn[S96AT_SERIAL_NUMBER_LEN] = { 0 };
-	uint8_t config_buf[S96AT_ZONE_CONFIG_LEN] = { 0 };
+	uint8_t config_buf[ZONE_CONFIG_LEN_MAX] = { 0 };
 
 	int opt;
 	int opt_idx = 0;
@@ -209,12 +90,21 @@ int main(int argc, char *argv[])
 		{0, 0, 0, 0}
 	};
 
-	if (argc == 1) {
+	if (argc < 3) {
 		usage(argv[0]);
 		return -1;
 	}
 
-	ret = s96at_init(S96AT_ATSHA204A, S96AT_IO_I2C_LINUX, &desc);
+	if (!strcmp(argv[1], "atsha")) {
+		dev = S96AT_ATSHA204A;
+	} else if (!strcmp(argv[1], "atecc")) {
+		dev = S96AT_ATECC508A;
+	} else {
+		fprintf(stderr, "Bad device %s\n", argv[1]);
+		return -1;
+	}
+
+	ret = s96at_init(dev, S96AT_IO_I2C_LINUX, &desc);
 	if (ret != S96AT_STATUS_OK) {
 		fprintf(stderr, "Could not initialize a descriptor\n");
 		return ret;
@@ -276,11 +166,16 @@ int main(int argc, char *argv[])
 			break;
 		case 'd':
 			while (s96at_wake(&desc) != S96AT_STATUS_READY) {};
-			ret = read_config(&desc, config_buf);
+
+			if (dev == S96AT_ATECC508A)
+				ret = atecc508a_read_config(&desc, config_buf);
+			else
+				ret = atsha204a_read_config(&desc, config_buf);
 			if (ret != S96AT_STATUS_OK) {
 				fprintf(stderr, "Could not read config\n");
 				goto out;
 			}
+
 			for (int i = 0; i < ARRAY_LEN(config_buf); i ++) {
 				printf("%c", config_buf[i]);
 			}
@@ -291,14 +186,20 @@ int main(int argc, char *argv[])
 				goto out;
 
 			while (s96at_wake(&desc) != S96AT_STATUS_READY) {};
-
-			ret = personalize_config(&desc);
+#if 0
+			if (dev == S96AT_ATECC508A)
+				ret = atecc508a_personalize_config(&desc);
+			else
+				ret = atsha204a_personalize_config(&desc);
 			if (ret != S96AT_STATUS_OK) {
 				fprintf(stderr, "Personalization failed\n");
 				goto out;
 			}
-
-			ret = personalize_data(&desc);
+#endif
+			if (dev == S96AT_ATECC508A)
+				ret = atecc508a_personalize_data(&desc);
+			else
+				ret = atsha204a_personalize_data(&desc);
 			if (ret != S96AT_STATUS_OK) {
 				fprintf(stderr, "Personalization failed\n");
 				goto out;

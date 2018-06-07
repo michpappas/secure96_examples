@@ -1,7 +1,3 @@
-#ifndef __CONFIG_H_
-#define __CONFIG_H_
-
-#include <secure96/s96at.h>
 #include <stdint.h>
 
 /* Slot configuration. For everything else we keep the default values
@@ -169,4 +165,3 @@ uint8_t atsha204a_otp[64] = {
 	0xff, 0xff, 0xff, 0xff,
 };
 
-#endif
