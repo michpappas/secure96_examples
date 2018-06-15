@@ -9,6 +9,7 @@
 extern uint8_t atecc508a_slot_config[32];
 extern uint8_t atecc508a_key_config[32];
 extern uint8_t atecc508a_data[1208];
+extern uint8_t atecc508a_priv[128];
 extern uint8_t atecc508a_otp[64];
 
 uint16_t slot_get_length(uint8_t slot) {
@@ -125,6 +126,7 @@ int atecc508a_personalize_data(struct s96at_desc *desc)
 		goto out;
 	}
 
+	/* Write data */
 	ptr = atecc508a_data;
 	for (int i = 0; i < DATA_NUM_SLOTS; i++) {
 
@@ -156,6 +158,19 @@ int atecc508a_personalize_data(struct s96at_desc *desc)
 			s96at_idle(desc);
 			while (s96at_wake(desc) != S96AT_STATUS_READY) {};
 		}
+	}
+
+	/* Write private keys */
+	uint8_t *key = atecc508a_priv;
+	for (int i = 0; i < DATA_NUM_SLOTS; i++) {
+		if ((atecc508a_key_config[i * 2] & 0x01) == 0)
+			continue;
+		ret = s96at_write_priv(desc, i, key, NULL);
+		if (ret != S96AT_STATUS_OK) {
+			fprintf(stderr,"Failed writing private key into slot %d\n", i);
+			goto out;
+		}
+		key += S96AT_ECC_PRIV_LEN;
 	}
 
 	/* OTP needs to be written in 2x 32byte blocks */

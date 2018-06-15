@@ -186,7 +186,6 @@ int main(int argc, char *argv[])
 				goto out;
 
 			while (s96at_wake(&desc) != S96AT_STATUS_READY) {};
-#if 0
 			if (dev == S96AT_ATECC508A)
 				ret = atecc508a_personalize_config(&desc);
 			else
@@ -195,7 +194,7 @@ int main(int argc, char *argv[])
 				fprintf(stderr, "Personalization failed\n");
 				goto out;
 			}
-#endif
+
 			if (dev == S96AT_ATECC508A)
 				ret = atecc508a_personalize_data(&desc);
 			else
