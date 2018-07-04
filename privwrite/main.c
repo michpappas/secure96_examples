@@ -57,7 +57,7 @@ static int atecc508a_read_config(struct s96at_desc *desc, uint8_t *buf)
 
 static int check_config(uint8_t *config_buf, uint8_t slot)
 {
-	int ret;
+	int ret = 0;
 	uint8_t *slot_config;
 	uint8_t *key_config;
 
@@ -238,6 +238,7 @@ int main(int argc, char *argv[])
 	memcpy(digest_in.temp_key, num_in, 32);
 
 	sha256((uint8_t *)&digest_in, sizeof(digest_in), temp_key);
+
 
 	/* Encrypt the EC Private Key (Sect 9.14)
 	 * The first 32 bytes are XORed with TempKey
