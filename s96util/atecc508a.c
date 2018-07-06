@@ -133,6 +133,12 @@ int atecc508a_personalize_data(struct s96at_desc *desc)
 		uint16_t slot_len = slot_get_length(i);
 		uint16_t num_blocks = slot_get_blocks(i);
 
+		/* Skip private keys, we write them below using PrivWrite */
+		if ((atecc508a_key_config[i * 2] & 0x01) == 1) {
+			ptr += slot_len;
+			continue;
+		}
+
 		memset(&addr, 0, sizeof(addr));
 		addr.slot = i;
 
