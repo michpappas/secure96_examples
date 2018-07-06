@@ -54,7 +54,7 @@ uint8_t atecc508a_slot_config[32] = {
      /* SlotConfig[11]: ReadKey=0x00, CheckOnly=0, SingleUse=0, EncryptedRead=0, IsSecret=1, WriteKey=0x00, WriteConfig=0x02 */
      0x87, 0x60,
      /* SlotConfig[12]: ReadKey=0x00, CheckOnly=0, SingleUse=0, EncryptedRead=0, IsSecret=1, WriteKey=0x00, WriteConfig=0x02 */
-     0x80, 0x20,
+     0x8e, 0x40,
      /* SlotConfig[13]: ReadKey=0x03, CheckOnly=0, SingleUse=0, EncryptedRead=0, IsSecret=1, WriteKey=0x00, WriteConfig=0x06 */
      0x87, 0x60,
      /* SlotConfig[14]: ReadKey=0x00, CheckOnly=0, SingleUse=0, EncryptedRead=0, IsSecret=1, WriteKey=0x00, WriteConfig=0x04 */
@@ -81,7 +81,7 @@ uint8_t atecc508a_key_config[32] = {
 	/* KeyConfig[10:15] ECC Public / Private keypairs */
         0x10, 0x00,
         0x33, 0x00,
-        0x10, 0x00,
+        0x12, 0x00,
         0x33, 0x00,
         0x10, 0x00,
         0x33, 0x00
